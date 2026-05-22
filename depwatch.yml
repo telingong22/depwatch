@@ -1,0 +1,23 @@
+# depwatch configuration file
+
+# How often to check for new dependency releases (in hours)
+check_interval_hours: 6
+
+projects:
+  - name: my-python-app
+    path: ./examples/python-app
+    language: python
+
+  - name: my-go-service
+    path: ./examples/go-service
+    language: go
+
+alerts:
+  # Uncomment and set your email address to receive digest emails
+  # email: you@example.com
+
+  # Uncomment and set a Slack/Discord/custom webhook URL
+  # webhook_url: https://hooks.slack.com/services/XXX/YYY/ZZZ
+
+  # How often to send a digest alert (in hours); must be >= check_interval_hours
+  digest_interval_hours: 24
