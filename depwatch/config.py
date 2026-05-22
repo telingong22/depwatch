@@ -74,9 +74,27 @@ def _parse_alert(data: dict[str, Any]) -> AlertConfig:
 
 
 def load_config(path: str = "depwatch.yml") -> Config:
-    """Load and parse the depwatch YAML configuration file."""
+    """Load and parse the depwatch YAML configuration file.
+
+    Args:
+        path: Path to the YAML configuration file. Defaults to 'depwatch.yml'.
+
+    Returns:
+        A fully validated Config instance.
+
+    Raises:
+        FileNotFoundError: If the configuration file does not exist.
+        KeyError: If required fields are missing from the configuration.
+        ValueError: If any configuration values fail validation.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Configuration file not found: {path}")
+
     with open(path, "r", encoding="utf-8") as fh:
         raw: dict[str, Any] = yaml.safe_load(fh)
+
+    if not isinstance(raw, dict):
+        raise ValueError(f"Configuration file '{path}' must contain a YAML mapping.")
 
     projects = [_parse_project(p) for p in raw.get("projects", [])]
     alert = _parse_alert(raw["alert"])
