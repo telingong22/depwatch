@@ -1,77 +1,83 @@
-"""Configuration loading and validation for depwatch."""
+"""Configuration dataclasses and YAML loader for depwatch."""
+
+from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any
 
 import yaml
+
+
+SUPPORTED_LANGUAGES = {"python", "go"}
+VALID_INTERVALS = {"hourly", "daily", "weekly"}
 
 
 @dataclass
 class ProjectConfig:
     name: str
+    language: str
     path: str
-    language: str  # 'python' or 'go'
+    dependencies: dict[str, str] = field(default_factory=dict)
 
-    def __post_init__(self):
-        if self.language not in ("python", "go"):
-            raise ValueError(f"Unsupported language '{self.language}' for project '{self.name}'")
+    def __post_init__(self) -> None:
+        if self.language not in SUPPORTED_LANGUAGES:
+            raise ValueError(
+                f"Unsupported language '{self.language}'. "
+                f"Choose from: {SUPPORTED_LANGUAGES}"
+            )
         if not os.path.exists(self.path):
             raise ValueError(f"Project path does not exist: {self.path}")
 
 
 @dataclass
 class AlertConfig:
-    email: Optional[str] = None
-    webhook_url: Optional[str] = None
-    digest_interval_hours: int = 24
+    target: str
+    interval: str = "daily"
+    only_outdated: bool = True
 
-    def __post_init__(self):
-        if self.digest_interval_hours < 1:
-            raise ValueError("digest_interval_hours must be at least 1")
-        if not self.email and not self.webhook_url:
-            raise ValueError("At least one alert target (email or webhook_url) must be configured")
+    def __post_init__(self) -> None:
+        if not self.target:
+            raise ValueError("AlertConfig.target must not be empty.")
+        if self.interval not in VALID_INTERVALS:
+            raise ValueError(
+                f"Invalid interval '{self.interval}'. "
+                f"Choose from: {VALID_INTERVALS}"
+            )
 
 
 @dataclass
 class Config:
-    projects: List[ProjectConfig] = field(default_factory=list)
-    alerts: AlertConfig = field(default_factory=lambda: AlertConfig(email="admin@example.com"))
-    check_interval_hours: int = 6
+    projects: list[ProjectConfig]
+    alert: AlertConfig
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.projects:
-            raise ValueError("At least one project must be configured")
-        if self.check_interval_hours < 1:
-            raise ValueError("check_interval_hours must be at least 1")
+            raise ValueError("Config must contain at least one project.")
+
+
+def _parse_project(data: dict[str, Any]) -> ProjectConfig:
+    return ProjectConfig(
+        name=data["name"],
+        language=data["language"],
+        path=data["path"],
+        dependencies=data.get("dependencies", {}),
+    )
+
+
+def _parse_alert(data: dict[str, Any]) -> AlertConfig:
+    return AlertConfig(
+        target=data["target"],
+        interval=data.get("interval", "daily"),
+        only_outdated=data.get("only_outdated", True),
+    )
 
 
 def load_config(path: str = "depwatch.yml") -> Config:
-    """Load and parse configuration from a YAML file."""
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Config file not found: {path}")
+    """Load and parse the depwatch YAML configuration file."""
+    with open(path, "r", encoding="utf-8") as fh:
+        raw: dict[str, Any] = yaml.safe_load(fh)
 
-    with open(path, "r") as f:
-        raw = yaml.safe_load(f)
-
-    projects = [
-        ProjectConfig(
-            name=p["name"],
-            path=p["path"],
-            language=p["language"],
-        )
-        for p in raw.get("projects", [])
-    ]
-
-    raw_alerts = raw.get("alerts", {})
-    alerts = AlertConfig(
-        email=raw_alerts.get("email"),
-        webhook_url=raw_alerts.get("webhook_url"),
-        digest_interval_hours=raw_alerts.get("digest_interval_hours", 24),
-    )
-
-    return Config(
-        projects=projects,
-        alerts=alerts,
-        check_interval_hours=raw.get("check_interval_hours", 6),
-    )
+    projects = [_parse_project(p) for p in raw.get("projects", [])]
+    alert = _parse_alert(raw["alert"])
+    return Config(projects=projects, alert=alert)
