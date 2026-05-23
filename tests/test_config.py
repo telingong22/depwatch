@@ -74,3 +74,32 @@ def test_load_config_success(config_file):
 def test_load_config_missing_file():
     with pytest.raises(FileNotFoundError):
         load_config("/tmp/does_not_exist_depwatch.yml")
+
+
+def test_load_config_multiple_projects(tmp_path):
+    """Verify that multiple projects are all loaded and validated correctly."""
+    dir_a = tmp_path / "app_a"
+    dir_b = tmp_path / "app_b"
+    dir_a.mkdir()
+    dir_b.mkdir()
+
+    cfg = textwrap.dedent(f"""\
+        projects:
+          - name: app-a
+            path: {dir_a}
+            language: python
+          - name: app-b
+            path: {dir_b}
+            language: node
+        alerts:
+          email: ops@example.com
+    """)
+    cfg_path = tmp_path / "depwatch.yml"
+    cfg_path.write_text(cfg)
+
+    config = load_config(str(cfg_path))
+    assert len(config.projects) == 2
+    names = {p.name for p in config.projects}
+    assert names == {"app-a", "app-b"}
+    languages = {p.language for p in config.projects}
+    assert languages == {"python", "node"}
