@@ -69,3 +69,26 @@ def fetch_latest(name: str, language: str) -> Optional[ReleaseInfo]:
     if language == "go":
         return fetch_latest_go(name)
     raise ValueError(f"Unsupported language: {language}")
+
+
+def fetch_all(dependencies: list[dict], language: str) -> list[ReleaseInfo]:
+    """Fetch the latest release info for a list of dependencies.
+
+    Args:
+        dependencies: A list of dicts with at least a ``name`` key, and an
+            optional ``language`` key that overrides the top-level *language*
+            argument.
+        language: Default language to use when a dependency does not specify one.
+
+    Returns:
+        A list of :class:`ReleaseInfo` objects for successfully fetched
+        packages.  Dependencies that fail to resolve are silently omitted.
+    """
+    results: list[ReleaseInfo] = []
+    for dep in dependencies:
+        name = dep["name"]
+        lang = dep.get("language", language)
+        info = fetch_latest(name, lang)
+        if info is not None:
+            results.append(info)
+    return results
