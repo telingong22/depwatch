@@ -32,7 +32,15 @@ def add_filter_parser(subparsers: argparse._SubParsersAction) -> None:  # noqa: 
     p.set_defaults(func=_run_filter)
 
 
+def _print_update_list(header: str, updates: list) -> None:
+    """Print a labelled list of package updates to stdout."""
+    print(header)
+    for u in updates:
+        print(f"  {u.package}: {u.current_version} \u2192 {u.latest_version}")
+
+
 def _run_filter(args: argparse.Namespace) -> int:
+    """Execute the filter sub-command and return an exit code."""
     try:
         cfg = load_config(args.config)
     except FileNotFoundError:
@@ -53,15 +61,12 @@ def _run_filter(args: argparse.Namespace) -> int:
         return 0
 
     if kept:
-        print(f"Updates that PASS the filter ({len(kept)}):")
-        for u in kept:
-            print(f"  {u.package}: {u.current_version} → {u.latest_version}")
+        _print_update_list(f"Updates that PASS the filter ({len(kept)}):", kept)
     else:
         print("No updates pass the current filter.")
 
     if suppressed:
-        print(f"\nUpdates SUPPRESSED by filter ({len(suppressed)}):")
-        for u in suppressed:
-            print(f"  {u.package}: {u.current_version} → {u.latest_version}")
+        print()
+        _print_update_list(f"Updates SUPPRESSED by filter ({len(suppressed)}):", suppressed)
 
     return 0
