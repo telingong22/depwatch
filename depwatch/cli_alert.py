@@ -28,7 +28,37 @@ def add_alert_parser(subparsers: argparse._SubParsersAction) -> None:  # type: i
     p.set_defaults(func=_run_alert)
 
 
+def _print_text_decision(decision) -> None:  # type: ignore[no-untyped-def]
+    """Print a human-readable summary of the alert decision to stdout."""
+    status = "ALERT" if decision.should_alert else "SUPPRESS"
+    print(f"[{status}] {decision.reason}")
+    for d in decision.digests:
+        print(f"  {d.project}: {len(d.updates)} update(s)")
+
+
+def _print_json_decision(decision) -> None:  # type: ignore[no-untyped-def]
+    """Print a JSON-formatted summary of the alert decision to stdout."""
+    out = {
+        "should_alert": decision.should_alert,
+        "reason": decision.reason,
+        "projects": [
+            {"project": d.project, "updates": len(d.updates)}
+            for d in decision.digests
+        ],
+    }
+    print(json.dumps(out, indent=2))
+
+
 def _run_alert(args: argparse.Namespace) -> int:
+    """Entry point for the ``alert`` sub-command.
+
+    Loads configuration and state, collects pending updates, evaluates the
+    configured alert threshold, and prints the decision.  Exit codes:
+
+    * ``0`` — threshold met, alert should fire.
+    * ``1`` — configuration or runtime error.
+    * ``2`` — threshold not met, alert suppressed.
+    """
     try:
         cfg: Config = load_config(args.config)
     except (FileNotFoundError, ValueError) as exc:
@@ -47,19 +77,8 @@ def _run_alert(args: argparse.Namespace) -> int:
     decision = evaluate_threshold(digests, threshold)
 
     if args.fmt == "json":
-        out = {
-            "should_alert": decision.should_alert,
-            "reason": decision.reason,
-            "projects": [
-                {"project": d.project, "updates": len(d.updates)}
-                for d in decision.digests
-            ],
-        }
-        print(json.dumps(out, indent=2))
+        _print_json_decision(decision)
     else:
-        status = "ALERT" if decision.should_alert else "SUPPRESS"
-        print(f"[{status}] {decision.reason}")
-        for d in decision.digests:
-            print(f"  {d.project}: {len(d.updates)} update(s)")
+        _print_text_decision(decision)
 
     return 0 if decision.should_alert else 2
