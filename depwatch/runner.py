@@ -1,61 +1,86 @@
-"""High-level run loop: collects updates, builds digests, and notifies.
-
-Also integrates FileWatcher so that a change to a dependency file
-triggers an immediate cycle in addition to the scheduled one.
-"""
+"""Runner: orchestrates one full check cycle and optional file-change watching."""
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import List
+from typing import Dict, List, Optional
 
 from depwatch.checker import UpdateInfo, check_project
 from depwatch.config import Config, ProjectConfig
 from depwatch.digest import ProjectDigest, build_all_digests
 from depwatch.notifier import DigestPayload, notify
+from depwatch.reporter import build_report, format_report_text, write_report
 from depwatch.state import get_last_seen, set_last_seen
 from depwatch.watcher import FileWatcher
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
-def _collect_updates(project: ProjectConfig) -> List[UpdateInfo]:
-    updates = check_project(project)
+def _collect_updates(
+    project: ProjectConfig,
+    state: dict,
+) -> List[UpdateInfo]:
+    """Return updates for *project* that have not been seen before."""
+    all_updates = check_project(project)
     new_updates: List[UpdateInfo] = []
-    for u in updates:
-        last = get_last_seen(project.name, u.package)
-        if last is None or u.latest_version != last:
-            new_updates.append(u)
-            set_last_seen(project.name, u.package, u.latest_version)
+    for update in all_updates:
+        last = get_last_seen(state, project.name, update.package)
+        if last != update.latest_version:
+            new_updates.append(update)
     return new_updates
 
 
 def _digests_to_payload(digests: List[ProjectDigest]) -> DigestPayload:
+    """Flatten non-empty digests into a single DigestPayload."""
     payload = DigestPayload()
-    for d in digests:
-        if not d.is_empty():
-            payload.projects.append(d)
+    for digest in digests:
+        if not digest.is_empty():
+            payload.projects.append(digest)
     return payload
 
 
-def run_cycle(config: Config) -> None:
-    """Run one full check-and-notify cycle for all configured projects."""
-    all_updates = {p.name: _collect_updates(p) for p in config.projects}
-    digests = build_all_digests(config.projects, all_updates)
+def run_cycle(
+    config: Config,
+    state: dict,
+    report_path: Optional[str] = None,
+) -> DigestPayload:
+    """Run one full check cycle: fetch updates, build digests, optionally report."""
+    updates_by_project: Dict[str, List[UpdateInfo]] = {}
+
+    for project in config.projects:
+        log.info("Checking project: %s", project.name)
+        try:
+            updates = _collect_updates(project, state)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Failed to check project %s: %s", project.name, exc)
+            updates = []
+        updates_by_project[project.name] = updates
+
+        for update in updates:
+            set_last_seen(state, project.name, update.package, update.latest_version)
+
+    digests = build_all_digests(config.projects, updates_by_project)
     payload = _digests_to_payload(digests)
+
+    if report_path:
+        report = build_report(digests)
+        write_report(report, report_path)
+        log.info("Report written to %s", report_path)
+        log.info("%s", format_report_text(report))
+
+    return payload
+
+
+def run_once(config: Config, state: dict, report_path: Optional[str] = None) -> None:
+    """Run a single cycle and dispatch notifications."""
+    payload = run_cycle(config, state, report_path=report_path)
     if not payload.is_empty():
         notify(config.alert, payload)
     else:
-        logger.info("No new updates found in this cycle")
+        log.info("No new dependency updates found.")
 
 
-def run_once(config: Config) -> None:
-    """Run a single cycle (used for --once CLI flag)."""
-    run_cycle(config)
-
-
-def make_file_watcher(config: Config, callback) -> FileWatcher:
-    """Build a FileWatcher covering all dependency files in *config*."""
-    paths = [Path(p.path) for p in config.projects]
-    return FileWatcher(paths, callback)
+def make_file_watcher(config: Config) -> FileWatcher:
+    """Create a FileWatcher that monitors all dependency files in *config*."""
+    paths = [p.path for p in config.projects]
+    return FileWatcher(paths)
