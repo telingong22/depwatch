@@ -23,6 +23,26 @@ def add_webhook_parser(subparsers: argparse._SubParsersAction) -> None:  # type:
     p.set_defaults(func=_run_webhook)
 
 
+def _build_test_payload(cfg) -> DigestPayload:
+    """Build a synthetic DigestPayload for testing, using the first configured project.
+
+    If no projects are defined in the config, a placeholder project name is used
+    so the webhook still fires with a realistic-looking payload.
+    """
+    from depwatch.checker import UpdateInfo  # local import to avoid cycles
+
+    project_name = cfg.projects[0].name if cfg.projects else "<no-project>"
+    test_updates = [
+        UpdateInfo(
+            project=project_name,
+            package="depwatch-test",
+            current_version="0.0.0",
+            latest_version="1.0.0",
+        )
+    ]
+    return DigestPayload(updates=test_updates)
+
+
 def _run_webhook(ns: argparse.Namespace) -> int:
     config_path = Path(ns.config)
     if not config_path.exists():
@@ -41,18 +61,12 @@ def _run_webhook(ns: argparse.Namespace) -> int:
         print(f"error: invalid webhook config: {exc}", file=sys.stderr)
         return 1
 
-    # Build a synthetic test payload using project names from config.
-    from depwatch.checker import UpdateInfo  # local import to avoid cycles
-    test_updates = [
-        UpdateInfo(project=p.name, package="depwatch-test", current_version="0.0.0", latest_version="1.0.0")
-        for p in cfg.projects[:1]
-    ]
-    payload = DigestPayload(updates=test_updates)
+    payload = _build_test_payload(cfg)
 
     ok = send_webhook(wh_cfg, payload)
     if ok:
         print(f"webhook delivered successfully to {ns.url}")
         return 0
     else:
-        print(f"error: webhook delivery failed", file=sys.stderr)
+        print("error: webhook delivery failed", file=sys.stderr)
         return 2
