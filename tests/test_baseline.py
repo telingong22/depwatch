@@ -65,6 +65,16 @@ def test_save_creates_valid_json(tmp_path):
     assert data[0]["package"] == "httpx"
 
 
+def test_save_overwrites_existing_file(tmp_path):
+    """Saving a new baseline to an existing path should replace the old content."""
+    path = str(tmp_path / "baseline.json")
+    save_baseline(path, [_entry("requests", "2.28.0")])
+    save_baseline(path, [_entry("flask", "3.0.0")])
+    loaded = load_baseline(path)
+    assert len(loaded) == 1
+    assert loaded[0].package == "flask"
+
+
 def test_diff_baseline_detects_version_change():
     old = [_entry("requests", "2.28.0")]
     new = [_entry("requests", "2.31.0")]
