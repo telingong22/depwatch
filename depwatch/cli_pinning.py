@@ -21,6 +21,12 @@ def add_pin_parser(subparsers: argparse._SubParsersAction) -> None:  # noqa: SLF
         default="text",
         help="Output format",
     )
+    p.add_argument(
+        "--output",
+        default=None,
+        metavar="FILE",
+        help="Write output to FILE instead of stdout",
+    )
     p.set_defaults(func=_run_pin)
 
 
@@ -36,6 +42,16 @@ def _run_pin(args: argparse.Namespace) -> None:
     suggestions = build_pin_suggestions(digests)
 
     if args.format == "json":
-        print(json.dumps([s.to_dict() for s in suggestions], indent=2))
+        output = json.dumps([s.to_dict() for s in suggestions], indent=2)
     else:
-        print(suggestions_to_text(suggestions))
+        output = suggestions_to_text(suggestions)
+
+    if args.output:
+        output_path = Path(args.output)
+        try:
+            output_path.write_text(output, encoding="utf-8")
+        except OSError as exc:
+            print(f"Error: could not write to {output_path}: {exc}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print(output)
