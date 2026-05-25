@@ -39,13 +39,23 @@ class DependencyGraph:
         return [n for n in self.nodes.values() if len(n.projects) > 1]
 
     def packages_for_project(self, project_name: str) -> List[GraphNode]:
+        """Return all nodes that belong to the given project."""
         return [n for n in self.nodes.values() if project_name in n.projects]
+
+    def outdated_packages(self) -> List[GraphNode]:
+        """Return nodes where current_version differs from latest_version."""
+        return [
+            n for n in self.nodes.values()
+            if n.current_version and n.latest_version
+            and n.current_version != n.latest_version
+        ]
 
     def to_dict(self) -> dict:
         return {
             "nodes": [n.to_dict() for n in self.nodes.values()],
             "total_packages": len(self.nodes),
             "shared_packages": len(self.shared_packages()),
+            "outdated_packages": len(self.outdated_packages()),
         }
 
 
