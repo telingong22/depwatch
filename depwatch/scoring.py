@@ -93,3 +93,22 @@ def rank_updates(
     ]
     scored.sort(key=lambda pair: pair[1].score, reverse=True)
     return scored
+
+
+def filter_by_min_score(
+    ranked: list[tuple[UpdateInfo, PriorityScore]],
+    min_score: int,
+) -> list[tuple[UpdateInfo, PriorityScore]]:
+    """Return only those ranked pairs whose score meets *min_score*.
+
+    Useful for suppressing low-priority noise (e.g. routine patch bumps with
+    no staleness or security concern) before sending alerts.
+
+    Parameters
+    ----------
+    ranked:
+        Output of :func:`rank_updates` – already sorted descending by score.
+    min_score:
+        Inclusive lower bound; pairs with ``score < min_score`` are dropped.
+    """
+    return [(u, ps) for u, ps in ranked if ps.score >= min_score]
